@@ -1,0 +1,5 @@
+
+# https://dev.mysql.com/doc/mysql-apt-repo-quick-guide/en/#repo-qg-apt-repo-manual-setup
+# deb http://repo.mysql.com/apt/debian/ jessie mysql-5.7|workbench-6.2|utilities-1.4|connector-python-2.0
+#
+deb http://repo.mysql.com/apt/debian/ jessie mysql-5.7

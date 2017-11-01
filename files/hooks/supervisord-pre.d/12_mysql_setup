@@ -1,0 +1,297 @@
+#!/bin/bash
+set -eo pipefail
+
+#
+# This script takes the following optional variables from the environment.
+# Blank variables are considered to be the same as non-specified variables.
+#
+#  MYSQL_INITDB_SKIP_TZINFO
+#    Any value causes timezone information import to be skipped
+#
+#  MYSQL_ONETIME_PASSWORD
+#    Any value causes all admin users to have their passwords expired immediately.
+#    Password will need to be changed before the user can be used.
+#
+#  MYSQL_ROOT_PASSWORD
+#    Cause an admin user called 'root' to be created with the specified password.
+#
+#  MYSQL_RANDOM_ROOT_PASSWORD
+#    Cause an admin user called 'root' to be created with a random password.
+#    Overrides any password specified in MYSQL_ROOT_PASSWORD.
+#
+#  MYSQL_ALLOW_EMPTY_PASSWORD
+#    Cause an admin user called 'root' to be created even if no password is being set.
+#
+#  MYSQL_ADMIN_USER
+#    Creates an admin user named after the value of this variable.
+#
+#  MYSQL_ADMIN_PASSWORD
+#    Specifies the password for the admin user created by specifying MYSQL_ADMIN_USER.
+#    Does nothing if MYSQL_ADMIN_USER is not specified.
+#
+#  MYSQL_RANDOM_ADMIN_PASSWORD
+#    Causes a random password to be set for the admin user created by specifying MYSQL_ADMIN_USER.
+#    Overrides any password specified in MYSQL_ADMIN_PASSWORD.
+#    Does nothing if MYSQL_ADMIN_USER is not specified.
+#
+#  MYSQL_USER
+#    Creates a standard (non-admin) user named after the value of this variable.
+#    Will be given full access to any database created using MYSQL_DATABASE.
+#    Does nothing if MYSQL_PASSWORD is not specified.
+#
+#  MYSQL_PASSWORD
+#    Specifies the password for the standard user created by specifying MYSQL_USER.
+#    Does nothing if MYSQL_USER is not specified.
+#
+#  MYSQL_DATABASE
+#    Causes a blank database to be created named after the value of this variable.
+#    Any standard user created with MYSQL_USER will be granted full access to this database.
+#
+
+DIRECTORY="$(mysqld --verbose --help 2>/dev/null | awk '$1 == "datadir" { print $2; exit }')"
+
+if [ ! -d "${DIRECTORY}/mysql" ]; then
+    echo
+    echo "Data directory does not yet exist - performing setup"
+    echo
+
+    ###################################################################
+    # Functions
+
+    function mysql_init {
+
+        mkdir -p "${DIRECTORY}"
+
+        touch ${DIRECTORY}/.init_script_is_incomplete
+
+        echo 'Initializing database'
+        mysqld --initialize-insecure
+        echo 'Database initialized'
+    }
+
+    function mysql_start {
+
+        mysqld --skip-networking &
+        pid="$!"
+
+        for i in {0..30}; do
+            if echo 'SELECT 1' | "${mysql[@]}" &> /dev/null; then
+                break
+            fi
+            echo "Waiting for MySQL to be ready (${i}/30) ..."
+            sleep 1
+        done
+        if [ "$i" = 0 ]; then
+            echo >&2 'FAILURE: MySQL setup process failed while starting mysql instance.'
+            exit 1
+        fi
+    }
+
+    function mysql_tzinit {
+        # sed is for https://bugs.mysql.com/bug.php?id=20545
+        mysql_tzinfo_to_sql /usr/share/zoneinfo | sed 's/Local time zone must be set--see zic manual page/FCTY/' | "${mysql[@]}" mysql
+    }
+
+    function remove_existing_users {
+
+        echo "Removing existing users"
+        echo 'DELETE FROM mysql.user ;' | "${mysql[@]}"
+    }
+
+    function create_admin_user {
+
+        local USERNAME=$1
+        local PASSWORD=$2
+        local RANDOM=$3
+
+        if [ ! -z "${RANDOM}" ]; then
+            PASSWORD="$(pwgen -1 32)"
+            echo "GENERATED RANDOM PASSWORD (only displayed once): ${PASSWORD}"
+        fi
+
+        echo "Creating admin user: ${USERNAME}"
+        "${mysql[@]}" <<-EOSQL
+        -- What's done in this file shouldn't be replicated
+        --  or products like mysql-fabric won't work
+        SET @@SESSION.SQL_LOG_BIN=0;
+        CREATE USER '${USERNAME}'@'%' IDENTIFIED BY '${PASSWORD}' ;
+        GRANT ALL ON *.* TO '${USERNAME}'@'%' WITH GRANT OPTION ;
+        DROP DATABASE IF EXISTS test ;
+        FLUSH PRIVILEGES ;
+EOSQL
+
+        USER_HAS_BEEN_CREATED=1
+
+        if [ -z "${CLI_ADMIN_USERNAME}" ]; then
+            CLI_ADMIN_USERNAME=${USERNAME}
+            CLI_ADMIN_PASSWORD=${PASSWORD}
+        fi
+    }
+
+    function create_database {
+
+        local DATABASE=$1
+
+        if [ "${DATABASE}" ]; then
+            echo "Creating database: ${DATABASE}"
+            echo "CREATE DATABASE IF NOT EXISTS \`${DATABASE}\` ;" | "${mysql[@]}"
+        fi
+    }
+
+    function create_standard_user {
+
+        local USERNAME=$1
+        local PASSWORD=$2
+        local DATABASE=$3
+        local RANDOM=$4
+
+        if [ ! -z "${RANDOM}" ]; then
+            PASSWORD="$(pwgen -1 32)"
+            echo "GENERATED RANDOM PASSWORD (only displayed once): ${PASSWORD}"
+        fi
+
+        echo "Creating standard user: ${USERNAME}"
+        echo "CREATE USER '${USERNAME}'@'%' IDENTIFIED BY '${PASSWORD}' ;" | "${mysql[@]}"
+
+        if [ "${DATABASE}" ]; then
+            echo "GRANT ALL ON \`${DATABASE}\`.* TO '${USERNAME}'@'%' ;" | "${mysql[@]}"
+        fi
+
+        echo 'FLUSH PRIVILEGES ;' | "${mysql[@]}"
+
+        USER_HAS_BEEN_CREATED=1
+    }
+
+    function initdb_scripts {
+
+        echo
+        for f in /docker-entrypoint-initdb.d/*; do
+            case "$f" in
+                *.sh)     echo "$0: running $f"; . "$f" ;;
+                *.sql)    echo "$0: running $f"; "${mysql[@]}" < "$f"; echo ;;
+                *.sql.gz) echo "$0: running $f"; gunzip -c "$f" | "${mysql[@]}"; echo ;;
+                *)        echo "$0: ignoring $f" ;;
+            esac
+            echo
+        done
+    }
+
+    function set_user_to_expired {
+
+        local USERNAME=$1
+
+        echo "Setting user password to expired (must be changed on next use): ${USERNAME}"
+        "${mysql[@]}" <<-EOSQL
+        ALTER USER '${USERNAME}'@'%' PASSWORD EXPIRE ;
+EOSQL
+    }
+
+    function stop_mysql {
+        if ! kill -s TERM "$pid" || ! wait "$pid"; then
+            echo >&2 'FAILURE: MySQL setup process failed while stopping mysql instance.'
+            exit 1
+        fi
+    }
+
+    ###################################################################
+
+    # Do not use externally provided values for these variables
+    CLI_ADMIN_USERNAME=""
+    CLI_ADMIN_PASSWORD=""
+    USER_HAS_BEEN_CREATED=0
+
+    mysql=( mysql --protocol=socket -uroot )
+
+    # Mysql first run (creates the data directory, starts temporary instance, etc.)
+    #
+    mysql_init
+    mysql_start
+    if [ -z "${MYSQL_INITDB_SKIP_TZINFO}" ]; then
+        mysql_tzinit
+    fi
+    echo
+
+    remove_existing_users
+
+    # Setup admin user(s)
+    #
+    if [ -n "${MYSQL_ROOT_PASSWORD}" -o -n "${MYSQL_ALLOW_EMPTY_PASSWORD}" -o -n "${MYSQL_RANDOM_ROOT_PASSWORD}" ]; then
+        # A 'root' user is requested is any of these three variables are specified
+        create_admin_user "root" "${MYSQL_ROOT_PASSWORD}" "${MYSQL_RANDOM_ROOT_PASSWORD}"
+
+        if [ -n "${CLI_ADMIN_USERNAME}" -a -n "${CLI_ADMIN_PASSWORD}" ]; then
+            mysql+=( -u"${CLI_ADMIN_USERNAME}" -p"${CLI_ADMIN_PASSWORD}" )
+            CLI_ADMIN_PASSWORD=""
+        fi
+    fi
+    if [ -n "${MYSQL_ADMIN_USER}" ]; then
+        # An admin user with a name other than root is requested
+        create_admin_user "${MYSQL_ADMIN_USER}" "${MYSQL_ADMIN_PASSWORD}" "${MYSQL_RANDOM_ADMIN_PASSWORD}"
+
+        if [ -n "${CLI_ADMIN_USERNAME}" -a -n "${CLI_ADMIN_PASSWORD}" ]; then
+            mysql+=( -u"${CLI_ADMIN_USERNAME}" -p"${CLI_ADMIN_PASSWORD}" )
+            CLI_ADMIN_PASSWORD=""
+        fi
+    fi
+
+    # Setup blank database
+    #
+    create_database "${MYSQL_DATABASE}"
+    if [ "${MYSQL_DATABASE}" ]; then
+        mysql+=( "${MYSQL_DATABASE}" )
+    fi
+
+    # Setup non-admin user
+    #
+    if [ -n "${MYSQL_USER}" -a -n "${MYSQL_PASSWORD}" ]; then
+        create_standard_user "${MYSQL_USER}" "${MYSQL_PASSWORD}" "${MYSQL_DATABASE}"
+    fi
+
+    # Warn if no user created
+    #
+    if [ "${USER_HAS_BEEN_CREATED}" -le "0" ]; then
+        echo >&2 "WARNING: No sql users requested - creating root user by default"
+        create_admin_user "root" "" "True"
+        MYSQL_ONETIME_PASSWORD="True"
+        if [ -n "${CLI_ADMIN_USERNAME}" -a -n "${CLI_ADMIN_PASSWORD}" ]; then
+            mysql+=( -u"${CLI_ADMIN_USERNAME}" -p"${CLI_ADMIN_PASSWORD}" )
+            CLI_ADMIN_PASSWORD=""
+        fi
+    fi
+
+    # Load seed data from scripts
+    #
+    initdb_scripts
+
+    # Set users to expired
+    #
+    if [ ! -z "${MYSQL_ONETIME_PASSWORD}" ]; then
+        if [ -n "${MYSQL_ADMIN_USER}" ]; then
+            set_user_to_expired "${MYSQL_ADMIN_USER}"
+        fi
+        if [ "${CLI_ADMIN_USERNAME}" != "${MYSQL_ADMIN_USER}" ]; then
+            set_user_to_expired "${CLI_ADMIN_USERNAME}"
+        fi
+    fi
+
+    # Need to stop the temporary instance before we can start for real
+    #
+    stop_mysql
+
+    # Remove the indication that we're mid process
+    #
+    if [ -e ${DIRECTORY}/.init_script_is_incomplete ]; then
+        rm ${DIRECTORY}/.init_script_is_incomplete
+    fi
+
+    # Inform the log that we're done
+    #
+    echo
+    echo 'MySQL init process done. Ready for start up.'
+    echo
+fi
+
+if [ -e ${DIRECTORY}/.init_script_is_incomplete ]; then
+    echo >&2 'FAILURE: MySQL setup process is incomplete.'
+    exit 1
+fi
