@@ -1,8 +1,7 @@
 FROM golang as configurability_mysql
 MAINTAINER brian.wilkinson@1and1.co.uk
 WORKDIR /go/src/github.com/1and1internet/configurability
-RUN export GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-	&& git clone https://github.com/1and1internet/configurability.git . \
+RUN git clone https://github.com/1and1internet/configurability.git . \
 	&& make mysql\
 	&& echo "configurability mysql plugin successfully built"
 
