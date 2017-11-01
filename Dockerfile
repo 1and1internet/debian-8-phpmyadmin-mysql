@@ -1,6 +1,15 @@
+FROM golang as configurability_mysql
+MAINTAINER brian.wilkinson@1and1.co.uk
+WORKDIR /go/src/github.com/1and1internet/configurability
+RUN export GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+	&& git clone https://github.com/1and1internet/configurability.git . \
+	&& make mysql\
+	&& echo "configurability mysql plugin successfully built"
+
 FROM 1and1internet/debian-8-phpmyadmin
 MAINTAINER brian.wojtczak@1and1.co.uk
 COPY files/ /
+COPY --from=configurability_mysql /go/src/github.com/1and1internet/configurability/bin/plugins/mysql.so /opt/configurability/goplugins
 RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
 	&& apt-get update \
 	&& apt-get install --no-install-recommends mysql-server pwgen \
