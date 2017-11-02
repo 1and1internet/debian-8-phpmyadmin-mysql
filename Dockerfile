@@ -35,4 +35,6 @@ RUN rm -rf /usr/share/doc \
     && rm -f /usr/sbin/mysqld-debug \
     && cd /usr/bin \
     && rm -f mysql_config_editor mysql_upgrade mysql_ssl_rsa_setup mysqlslap mysql_embedded \
-    && rm -rf /usr/lib/mysql/plugin/debug
+    && rm -rf /usr/lib/mysql/plugin/debug \
+    && apt-get remove libx11*
+
