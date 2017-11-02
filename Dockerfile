@@ -35,5 +35,5 @@ RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
     && rm -rf /usr/share/man \
     && rm -f /usr/sbin/mysqld-debug \
     && cd /usr/bin \
-    && rm -f mysql_config_editor mysql_upgrade mysql_tzinfo_to_sql mysql_ssl_rsa_setup mysqlslap mysql_embedded \
+    && rm -f mysql_config_editor mysql_upgrade mysql_ssl_rsa_setup mysqlslap mysql_embedded \
     && rm -rf /usr/lib/mysql/plugin/debug
