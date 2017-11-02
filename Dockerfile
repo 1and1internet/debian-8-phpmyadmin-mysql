@@ -29,8 +29,7 @@ ENV PMA_ARBITRARY=0 \
 	MYSQL_QUERY_CACHE_LIMIT=1M
 VOLUME /var/lib/mysql
 EXPOSE 3306
-RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
-    && rm -rf /usr/share/doc \
+RUN rm -rf /usr/share/doc \
     && echo 'Yes, do as I say!' | apt-get remove -y --force-yes systemd \
     && rm -rf /usr/share/man \
     && rm -f /usr/sbin/mysqld-debug \
