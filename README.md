@@ -44,5 +44,5 @@ In order to save space, the mysql binary tarball is being downloaded. The unrequ
 A fake mysql-server package has been created using the equivs package, i.e:
 * apt-get install equivs
 * equivs-control mysql-server
-* <edit the file the gets created>
+* _edit the file the gets created_
 * equivs-build mysql-server
