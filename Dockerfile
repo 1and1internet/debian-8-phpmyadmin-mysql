@@ -16,12 +16,11 @@ RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
 	&& tar zxvf mysql-5.7.20-linux-glibc2.12-x86_64.tar.gz \
 	&& mkdir -p /usr/local/mysql/bin \
 	&& cd /mysql-5.7.20-linux-glibc2.12-x86_64/bin \
-	&& cp my_print_defaults  mysql  mysqld  mysqld_safe  mysql_tzinfo_to_sql /usr/local/mysql/bin \
+	&& cp my_print_defaults mysql mysqld mysqld_safe mysql_tzinfo_to_sql /usr/local/mysql/bin \
 	&& cd /mysql-5.7.20-linux-glibc2.12-x86_64 \
 	&& cp -R share /usr/share/mysql/ \
 	&& cd / \
 	&& rm -rf /mysql-5.7.20-linux-glibc2.12-x86_64* \
-	&& useradd mysql \
 	&& mkdir -p /var/run/mysqld \
 	&& cd /usr/local/mysql \
 	&& rm -rf /tmp/* \
@@ -34,13 +33,18 @@ RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
 	&& strip my_print_defaults mysql mysqld mysql_tzinfo_to_sql \
 	&& apt-get remove wget binutils \
 	&& apt-get clean \
-	&& rm -rf /var/lib/apt/lists/*
+	&& rm -rf /var/lib/apt/lists/* \
+	&& update-alternatives --install /usr/sbin/mysqld mysqld /usr/local/mysql/bin/mysqld 1 \
+	&& update-alternatives --install /usr/bin/my_print_defaults my_print_defaults /usr/local/mysql/bin/my_print_defaults 1 \
+	&& update-alternatives --install /usr/bin/mysql mysql /usr/local/mysql/bin/mysql 1 \
+	&& update-alternatives --install /usr/sbin/mysqld_safe mysqld_safe /usr/local/mysql/bin/mysqld_safe 1 \
+	&& update-alternatives --install /usr/bin/mysql_tzinfo_to_sql mysql_tzinfo_to_sql /usr/local/mysql/bin/mysql_tzinfo_to_sql 1 \
+	&& dpkg -i /mysql-server_5.7.20_all.deb
 ENV PMA_ARBITRARY=0 \
 	PMA_HOST=localhost \
 	MYSQL_GENERAL_LOG=0 \
 	MYSQL_QUERY_CACHE_TYPE=1 \
 	MYSQL_QUERY_CACHE_SIZE=16M \
-	MYSQL_QUERY_CACHE_LIMIT=1M \
-	PATH=$PATH:/usr/local/mysql/bin
+	MYSQL_QUERY_CACHE_LIMIT=1M
 VOLUME /var/lib/mysql
 EXPOSE 3306

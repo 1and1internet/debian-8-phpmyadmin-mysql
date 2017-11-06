@@ -37,3 +37,12 @@ This image is currently an experimental work in progress.
  * ``PMA_USER``
  * ``PMA_PASSWORD``
 
+## Mysql Package
+
+In order to save space, the mysql binary tarball is being downloaded. The unrequired content is discarded and the remaining binaries are stripped.
+
+A fake mysql-server package has been created using the equivs package, i.e:
+ . apt-get install equivs
+ . equivs-control mysql-server
+ . <edit the file the gets created>
+ . equivs-build mysql-server
