@@ -59,6 +59,7 @@ max_allowed_packet = 16M
 
 [mysql]
 no-auto-rehash
+socket                  = /var/run/mysqld/mysqld.sock
 
 [myisamchk]
 key_buffer_size = 8M
