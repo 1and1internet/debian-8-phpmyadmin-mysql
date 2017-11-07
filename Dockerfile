@@ -14,16 +14,18 @@ RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
 	&& apt-get install curl libaio-dev libnuma-dev pwgen binutils \
 	&& echo "Find and retrieve latest mysql 5.7 tar.gz file" \
 	&& TARGZ=$(curl -s http://www.mirrorservice.org/sites/ftp.mysql.com/Downloads/MySQL-5.7/ | sed 's/.*a href.*>\(.*\)<\/a>.*/\1/' | egrep "mysql-5.7.[0-9]*-linux-glibc2.12-x86_64.tar.gz$" | sort | tail -1) \
-	&& curl -g http://www.mirrorservice.org/sites/ftp.mysql.com/Downloads/MySQL-5.7/${TARGZ} -o ${TARGZ} \
-	&& tar zxvf ${TARGZ} \
-	&& mkdir -p /usr/local/mysql/bin \
 	&& MYSQL_PKG=$(echo $TARGZ | sed 's/\(.*\).tar.gz/\1/') \
-	&& cd /${MYSQL_PKG}/bin \
-	&& cp my_print_defaults mysql mysqld mysqld_safe mysql_tzinfo_to_sql /usr/local/mysql/bin \
-	&& cd /${MYSQL_PKG} \
-	&& cp -R share /usr/share/mysql/ \
-	&& cd / \
-	&& rm -rf /${MYSQL_PKG} /${TARGZ} \
+	&& curl -sg http://www.mirrorservice.org/sites/ftp.mysql.com/Downloads/MySQL-5.7/${TARGZ} | \
+		tar zxvf - ${MYSQL_PKG}/bin/my_print_defaults \
+					${MYSQL_PKG}/bin/mysqld \
+					${MYSQL_PKG}/bin/mysqld_safe \
+					${MYSQL_PKG}/bin/mysql \
+					${MYSQL_PKG}/bin/mysql_tzinfo_to_sql \
+					${MYSQL_PKG}/share \
+	&& mkdir -p /usr/local/mysql/bin \
+	&& cp /${MYSQL_PKG}/bin/* /usr/local/mysql/bin \
+	&& cp -R /${MYSQL_PKG}/share /usr/share/mysql \
+	&& rm -rf /${MYSQL_PKG} \
 	&& mkdir -p /var/run/mysqld \
 	&& cd /usr/local/mysql \
 	&& rm -rf /tmp/* \
@@ -31,7 +33,6 @@ RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
 	&& chmod -R 777 /var/run /run /var/log /etc/mysql/ /var/lib/mysql /usr/share/mysql \
 	&& chmod -R 755 /init /hooks \
 	&& find /etc/mysql/ -type f -exec chmod 644 {} \; \
-	&& rm -rf /var/lib/mysql/* \
 	&& cd /usr/local/mysql/bin \
 	&& strip my_print_defaults mysql mysqld mysql_tzinfo_to_sql \
 	&& apt-get remove curl binutils \
