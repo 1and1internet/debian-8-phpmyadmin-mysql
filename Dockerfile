@@ -11,16 +11,19 @@ COPY files/ /
 COPY --from=configurability_mysql /go/src/github.com/1and1internet/configurability/bin/plugins/mysql.so /opt/configurability/goplugins
 RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
 	&& apt-get update \
-	&& apt-get install wget libaio-dev libnuma-dev pwgen binutils \
-	&& wget https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-5.7.20-linux-glibc2.12-x86_64.tar.gz \
-	&& tar zxvf mysql-5.7.20-linux-glibc2.12-x86_64.tar.gz \
+	&& apt-get install curl libaio-dev libnuma-dev pwgen binutils \
+	&& echo "Find and retrieve latest mysql 5.7 tar.gz file" \
+	&& TARGZ=$(curl -s http://www.mirrorservice.org/sites/ftp.mysql.com/Downloads/MySQL-5.7/ | sed 's/.*a href.*>\(.*\)<\/a>.*/\1/' | egrep "mysql-5.7.[0-9]*-linux-glibc2.12-x86_64.tar.gz$" | sort | tail -1) \
+	&& curl -g http://www.mirrorservice.org/sites/ftp.mysql.com/Downloads/MySQL-5.7/${TARGZ} -o ${TARGZ} \
+	&& tar zxvf ${TARGZ} \
 	&& mkdir -p /usr/local/mysql/bin \
-	&& cd /mysql-5.7.20-linux-glibc2.12-x86_64/bin \
+	&& MYSQL_PKG=$(echo $TARGZ | sed 's/\(.*\).tar.gz/\1/') \
+	&& cd /${MYSQL_PKG}/bin \
 	&& cp my_print_defaults mysql mysqld mysqld_safe mysql_tzinfo_to_sql /usr/local/mysql/bin \
-	&& cd /mysql-5.7.20-linux-glibc2.12-x86_64 \
+	&& cd /${MYSQL_PKG} \
 	&& cp -R share /usr/share/mysql/ \
 	&& cd / \
-	&& rm -rf /mysql-5.7.20-linux-glibc2.12-x86_64* \
+	&& rm -rf /${MYSQL_PKG} /${TARGZ} \
 	&& mkdir -p /var/run/mysqld \
 	&& cd /usr/local/mysql \
 	&& rm -rf /tmp/* \
@@ -31,7 +34,7 @@ RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
 	&& rm -rf /var/lib/mysql/* \
 	&& cd /usr/local/mysql/bin \
 	&& strip my_print_defaults mysql mysqld mysql_tzinfo_to_sql \
-	&& apt-get remove wget binutils \
+	&& apt-get remove curl binutils \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& update-alternatives --install /usr/sbin/mysqld mysqld /usr/local/mysql/bin/mysqld 1 \
